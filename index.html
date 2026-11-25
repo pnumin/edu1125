@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>공무출장 여비 계산기</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="calculator.js"></script>
+  <script defer src="vendor/jszip.min.js"></script>
+  <script defer src="excel.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar"><div class="shell bar-inner">
+    <span class="identity"><span class="mark" aria-hidden="true">₩</span> 여비 정산</span>
+    <div class="bar-actions">
+      <span class="offline">오프라인 사용 가능</span>
+      <button class="button secondary manual-trigger" id="open-manual" type="button" aria-haspopup="dialog" aria-controls="manual">사용설명서 보기</button>
+    </div>
+  </div></header>
+  <main>
+    <section class="intro shell">
+      <p class="version">공무원 여비 규정 · 2026년 10월 2일 시행본</p>
+      <h1>공무출장 <span class="title-accent">여비 계산기</span></h1>
+      <p>출장 기간과 증빙 내역을 입력하면 항목별 인정액과 적용 근거를 확인할 수 있습니다.</p>
+    </section>
+    <div class="layout shell">
+      <form id="trip-form" class="panel inputs">
+        <fieldset class="block">
+          <legend>출장 기본 정보</legend>
+          <div class="choices" aria-label="출장 유형">
+            <label><input type="radio" name="type" value="domestic" checked>근무지 외 국내</label>
+            <label><input type="radio" name="type" value="local">근무지 내 국내</label>
+            <label><input type="radio" name="type" value="foreign">국외 출장</label>
+          </div>
+          <div class="grid">
+            <label>출장일<input name="start" type="date" min="2026-10-02" required></label>
+            <label>복귀일<input name="end" type="date" min="2026-10-02" required></label>
+          </div>
+          <p id="period" class="hint" aria-live="polite">출장일과 복귀일을 모두 입력하세요.</p>
+        </fieldset>
+        <fieldset id="local-fields" class="block" hidden disabled>
+          <legend>근무지 내 출장 조건</legend>
+          <label>실제 출장 시간
+            <select name="duration"><option value="">선택하세요</option><option value="short">4시간 미만</option><option value="long">4시간 이상</option></select>
+          </label>
+          <label>차량 이용 및 배정
+            <select name="localVehicle"><option value="none">해당 없음</option><option value="official">공무용 차량 등 감액 대상</option><option value="assigned">전용 차량 배정자</option></select>
+          </label>
+          <label class="check"><input name="shortDistance" type="checkbox"> 왕복 2km 이내 근거리 출장</label>
+          <div id="local-cost" hidden>
+            <label>증빙으로 확인한 지급 대상 실비 <span class="light">(원)</span><input name="localCost" type="number" min="0" max="1000000000" step="1" placeholder="0"></label>
+            <p class="hint">4시간 미만은 운임만, 4시간 이상은 운임과 지급 대상 식비를 입력하세요. 공무용 차량 이용 시 운임은 제외합니다.</p>
+          </div>
+          <p class="hint">같은 시·군·섬 안 또는 여행거리 12km 미만인 출장을 하루씩 계산합니다. 지역별 적용 특례는 제18조를 확인하세요.</p>
+        </fieldset>
+        <fieldset id="travel-fields" class="block">
+          <legend>지급 및 운임 조건</legend>
+          <div class="grid">
+            <label>지급 구분 <span class="light">(별표 1)</span>
+              <select name="group" required><option value="">선택하세요</option><option value="2">제2호</option><option value="1a">제1호 가목</option><option value="1b">제1호 나목</option><option value="1c">제1호 다목</option><option value="1d">제1호 라목</option><option value="actual">대통령·국무총리</option></select>
+            </label>
+            <label>정산 인정 운임 <span class="light">(원)</span><input name="fare" type="number" min="0" max="1000000000" step="1" placeholder="0"></label>
+          </div>
+          <p id="fare-hint" class="hint">지급 등급 및 할인 적용 후 인정 운임을 입력하세요. 공용 교통수단을 이용한 구간의 운임은 제외합니다.</p>
+          <label class="check"><input name="half" type="checkbox"> 전 일정 일비 50% 지급 대상<span class="light">공무용 차량 이용 등</span></label>
+          <label class="check"><input name="stay" type="checkbox"> 출발일 도착 후 복귀일까지 같은 곳에 연속 체재<span class="light">제17조 기본 감액률 적용</span></label>
+          <div id="actual-fields" class="grid" hidden>
+            <label>일비 실비 <span class="light">(원)</span><input name="actualDaily" type="number" min="0" max="1000000000" step="1" placeholder="0"></label>
+            <label>식비 실비 <span class="light">(원)</span><input name="actualMeals" type="number" min="0" max="1000000000" step="1" placeholder="0"></label>
+          </div>
+          <details class="options">
+            <summary>식비 지급일 및 공적 항공마일리지</summary>
+            <div class="grid">
+              <label>식비 지급 대상 일수<input name="mealDays" type="number" min="0" step="1" placeholder="전체 출장일"></label>
+              <label>마일리지 적용 절감 운임 <span class="light">(원)</span><input name="mileage" type="number" min="0" max="1000000000" step="1" placeholder="0"></label>
+            </div>
+            <p class="hint">수로·항공 여행일은 별도로 식비가 필요한 날만 포함하세요. 절감액은 담당자가 확인한 금액을 입력하세요.</p>
+          </details>
+        </fieldset>
+        <fieldset id="foreign-fields" class="block" hidden disabled>
+          <legend>국외 출장 조건</legend>
+          <div class="grid">
+            <label>국가·도시 등급 <span class="light">(별표 4)</span>
+              <select name="grade"><option value="">선택하세요</option><option value="A">가등급</option><option value="B">나등급</option><option value="C">다등급</option><option value="D">라등급</option></select>
+            </label>
+            <label>적용 환율 <span class="light">(1 USD당 원)</span><input name="rate" type="number" min="0.01" max="1000000" step="0.01" placeholder="예: 1,400"></label>
+          </div>
+          <p id="foreign-hint" class="hint">출장 담당자가 확인한 등급과 기관 적용 환율을 입력하세요. 이 계산은 여정 전체에 한 등급을 적용합니다.</p>
+          <label>추가 지급이 인정된 식비 초과 지출액 <span class="light">(USD)</span><input name="extraMeal" type="number" min="0" max="10000000" step="0.01" placeholder="0"></label>
+          <p class="hint">정액 식비를 초과하여 지출한 금액 중 제16조에 따라 추가 지급이 인정된 금액을 입력하세요.</p>
+          <label>증빙으로 확인한 준비금 <span class="light">(원)</span><input name="preparation" type="number" min="0" max="1000000000" step="1" placeholder="0"></label>
+          <p class="hint">여비 규정 제23조에 따른 지급 대상 항목의 실비를 입력하세요.</p>
+        </fieldset>
+        <fieldset id="hotel-fields" class="block">
+          <legend>숙박비 증빙</legend>
+          <p id="hotel-hint" class="hint">실제 숙박분만 1박씩 추가하세요. 숙박이 없으면 비워 두세요.</p>
+          <div id="hotels"></div>
+          <button class="button secondary" id="add-hotel" type="button">+ 숙박 1박 추가</button>
+        </fieldset>
+        <div class="actions">
+          <button class="button primary" type="submit">여비 계산</button>
+          <button class="button secondary" type="reset">초기화</button>
+        </div>
+        <p id="error" class="error" role="alert" tabindex="-1" hidden></p>
+      </form>
+      <aside class="panel results" aria-labelledby="result-heading">
+        <div class="result-head">
+          <h2 id="result-heading" tabindex="-1">정산 결과</h2>
+          <p>총 인정액</p>
+          <p class="total" id="total" aria-live="polite">–</p>
+          <p class="result-meta" id="result-meta">출장 정보를 입력해 주세요.</p>
+        </div>
+        <div class="result-body">
+          <div id="breakdown" class="breakdown">
+            <div><span>운임</span><strong>–</strong></div>
+            <div><span>일비</span><strong>–</strong></div>
+            <div><span>숙박비</span><strong>–</strong></div>
+            <div><span>식비</span><strong>–</strong></div>
+          </div>
+          <p class="result-note" id="result-note" hidden></p>
+          <div class="result-actions" id="result-actions" hidden>
+            <button class="button secondary" id="print-result" type="button">결과 출력</button>
+            <button class="button primary" id="save-excel" type="button">엑셀로 저장</button>
+          </div>
+          <p class="error export-error" id="export-error" role="alert" hidden></p>
+        </div>
+      </aside>
+    </div>
+    <footer class="shell">
+      <details>
+        <summary>적용 자료와 계산 범위</summary>
+        <ul>
+          <li><a href="../pdf/공무원 여비 규정(대통령령)(제36728호)(20261002).pdf">공무원 여비 규정 본문</a> · 제5조, 제10조~제13조, 제15조~제18조</li>
+          <li><a href="../pdf/%5B별표%202%5D%20국내%20여비%20지급표(제10조부터%20제13조까지%20및%20제16조제1항%20관련)(공무원%20여비%20규정).pdf">별표 2 국내 여비 지급표</a></li>
+          <li><a href="../pdf/공무원여비규정_제3항부터제5항.pdf">제16조 제3항~제5항 발췌</a></li>
+          <li>국가법령정보센터 <a href="https://www.law.go.kr/flDownload.do?bylClsCd=110201&amp;flSeq=169708637">별표 1</a> · <a href="https://www.law.go.kr/LSW/flDownload.do?bylClsCd=110201&amp;flSeq=160162321">별표 3</a> · <a href="https://www.law.go.kr/LSW/flDownload.do?flSeq=169558653">별표 4</a> (원문 링크는 인터넷 연결 필요)</li>
+          <li><a href="https://www.gen.go.kr/xboard/board.php?keyset=&amp;mode=downpost&amp;number=455813&amp;page=1&amp;sCat=0&amp;searchword=&amp;tbnum=362">인사혁신처·행정안전부 복무 질의 답변</a> · 왕복 2km 이내 근거리 출장 실비 기준 (인터넷 연결 필요)</li>
+        </ul>
+        <p>실제 여행에 필요한 날짜를 입력하고, 운임은 할인과 지급 등급을 적용한 인정 금액을 입력하세요. 국외 숙박 증빙은 USD로 환산해 입력합니다. 원화 환산액은 항목별 1원 단위 반올림으로 표시합니다.</p>
+        <p>여정 중 일비 감액 조건이나 국외 지역 등급이 바뀌는 경우, 기관별 할인정액·별도 감액률·여비 특례가 적용되는 경우에는 담당자가 별도 검토해야 합니다. 출장일이 시행일보다 앞서는 여정은 해당 시점의 규정으로 확인하세요.</p>
+      </details>
+    </footer>
+  </main>
+  <dialog class="manual-dialog" id="manual" aria-labelledby="manual-title">
+    <div class="manual-header">
+      <h2 id="manual-title" tabindex="-1" autofocus>사용설명서</h2>
+      <form method="dialog">
+        <button class="button secondary" type="submit">닫기</button>
+      </form>
+    </div>
+    <div class="manual-body">
+      <section>
+        <h3>출장 정보 입력</h3>
+        <p>출장 유형을 선택하고 출장일과 복귀일을 입력하세요. 근무지 내 국내 출장은 하루씩 계산하므로 두 날짜를 같게 입력합니다.</p>
+        <dl>
+          <dt>근무지 내 국내</dt>
+          <dd>실제 출장 시간과 차량 이용 조건을 선택하세요. 왕복 2km 이내라면 근거리 출장에 체크하고 지급 대상 실비를 입력하세요.</dd>
+          <dt>근무지 외 국내</dt>
+          <dd>지급 구분과 정산 인정 운임을 입력하세요. 숙박했다면 <strong>숙박 1박 추가</strong>를 눌러 실제 숙박분을 입력하세요.</dd>
+          <dt>국외 출장</dt>
+          <dd>지급 구분, 국가·도시 등급과 기관 적용 환율을 입력하세요. 인정 운임과 준비금은 원화로, 숙박비 증빙은 USD로 환산해 입력하세요.</dd>
+        </dl>
+      </section>
+      <section>
+        <h3>결과 확인 및 저장</h3>
+        <ol>
+          <li><strong>여비 계산</strong>을 눌러 총 인정액, 항목별 금액과 계산 근거를 확인하세요.</li>
+          <li><strong>결과 출력</strong>을 누르면 프린터를 선택하거나 PDF로 저장할 수 있습니다.</li>
+          <li><strong>엑셀로 저장</strong>을 누르면 현재 결과를 <strong>.xlsx</strong> 파일로 내려받을 수 있습니다.</li>
+        </ol>
+        <p>입력을 바꾼 뒤에는 다시 계산하세요. 새 출장 건을 입력하려면 <strong>초기화</strong>를 누르세요.</p>
+      </section>
+    </div>
+  </dialog>
+</body>
+</html>
